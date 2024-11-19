@@ -5,7 +5,9 @@ import pygame
 
 from juggling_tools import Ball, JugglingEnvironment
 
-# Constants
+# ================  Constants (You can change these)  ================
+
+# Pygame settings
 SCREEN_WIDTH = 800  # in pixels
 SCREEN_HEIGHT = 600  # in pixels
 FPS = 60
@@ -23,6 +25,7 @@ BALL_RADIUS = 0.06  # in meters
 USE_PASTEL_COLORS = False
 
 if USE_PASTEL_COLORS:
+    # Pastel colors
     BALL_COLORS = [
         (135, 206, 250),  # Light Sky Blue
         (255, 182, 193),  # Light Pink
@@ -31,6 +34,7 @@ if USE_PASTEL_COLORS:
         (221, 160, 221),  # Plum
     ]
 else:
+    # Default colors
     BALL_COLORS = [
         (255, 0, 0),  # Red
         (0, 0, 255),  # Blue
@@ -43,6 +47,8 @@ else:
 DRAW_CATCH_LINE = False
 DRAW_HAND_MARKERS = True
 
+
+# ====================================================================
 
 def compute_throw_range(environment: JugglingEnvironment, velocity: float, angle: float) -> float:
     # Compute horizontal range in meters
