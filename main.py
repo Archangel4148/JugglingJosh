@@ -19,8 +19,29 @@ MAX_HEIGHT = 0.76  # Max height of throw in meters
 
 # Ball settings
 NUMBER_OF_BALLS = 3
-BALL_COLORS = [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 255)]
 BALL_RADIUS = 0.06  # in meters
+USE_PASTEL_COLORS = False
+
+if USE_PASTEL_COLORS:
+    BALL_COLORS = [
+        (135, 206, 250),  # Light Sky Blue
+        (255, 182, 193),  # Light Pink
+        (144, 238, 144),  # Light Green
+        (255, 250, 205),  # Lemon Chiffon
+        (221, 160, 221),  # Plum
+    ]
+else:
+    BALL_COLORS = [
+        (255, 0, 0),  # Red
+        (0, 0, 255),  # Blue
+        (0, 255, 0),  # Green
+        (255, 255, 0),  # Yellow
+        (255, 0, 255),  # Magenta
+    ]
+
+# Cosmetic settings
+DRAW_CATCH_LINE = False
+DRAW_HAND_MARKERS = True
 
 
 def compute_throw_range(environment: JugglingEnvironment, velocity: float, angle: float) -> float:
@@ -32,28 +53,61 @@ def compute_throw_range(environment: JugglingEnvironment, velocity: float, angle
 
 
 def draw_background(main_screen: pygame.Surface, environment: JugglingEnvironment, marker_length: int):
-    main_screen.fill((255, 255, 255))
-    pygame.draw.line(main_screen, (0, 0, 0), (0, environment.floor_y), (environment.width_pix, environment.floor_y), 2)
-    pygame.draw.line(main_screen, (255, 0, 255), (environment.left_hand_x, environment.floor_y),
-                     (environment.left_hand_x, environment.floor_y + marker_length), 5)
-    pygame.draw.line(main_screen, (255, 0, 255), (environment.right_hand_x, environment.floor_y),
-                     (environment.right_hand_x, environment.floor_y + marker_length), 5)
+    # Light pastel background
+    main_screen.fill((240, 248, 255))  # Alice Blue
+    floor_color = (150, 150, 150)  # Subtle gray for floor line
+    marker_color = (50, 50, 150)  # Dark blue for hands
+
+    # Draw "catch" line
+    if DRAW_CATCH_LINE:
+        pygame.draw.line(main_screen, floor_color, (0, environment.floor_y),
+                         (environment.width_pix, environment.floor_y), 2)
+
+    # Draw hand markers
+    if DRAW_HAND_MARKERS:
+        pygame.draw.line(main_screen, marker_color, (environment.left_hand_x, environment.floor_y),
+                         (environment.left_hand_x, environment.floor_y + marker_length), 5)
+        pygame.draw.line(main_screen, marker_color, (environment.right_hand_x, environment.floor_y),
+                         (environment.right_hand_x, environment.floor_y + marker_length), 5)
 
 
-def draw_reset_button(main_screen: pygame.Surface, environment: JugglingEnvironment):
+def draw_reset_button(main_screen: pygame.Surface, environment: JugglingEnvironment, mouse_x: int, mouse_y: int):
     button_width = 150
     button_height = 50
-    button_color = (255, 0, 0)
+    button_color = (240, 128, 128)  # Light Coral
+    button_hover_color = (255, 160, 160)  # Lighter Coral for hover effect
+    button_pressed_color = (200, 100, 100)  # Darker Coral for click effect
+    shadow_color = (200, 100, 100)
+    text_color = (255, 255, 255)
     button_x = environment.width_pix - button_width - 20
     button_y = 20
 
-    pygame.draw.rect(main_screen, button_color, (button_x, button_y, button_width, button_height))
-    font = pygame.font.SysFont(None, 30)
-    text = font.render("Reset", True, (255, 255, 255))
+    # Check if the mouse is hovering over the button
+    is_hovered = button_x <= mouse_x <= button_x + button_width and button_y <= mouse_y <= button_y + button_height
+
+    # Check if the mouse click is within the button
+    is_clicked = False
+    if is_hovered and pygame.mouse.get_pressed()[0]:
+        is_clicked = True
+
+    # Use a different button color depending on hover and click state
+    current_button_color = button_pressed_color if is_clicked else (button_hover_color if is_hovered else button_color)
+
+    # Draw shadow
+    pygame.draw.rect(main_screen, shadow_color, (button_x + 3, button_y + 3, button_width, button_height),
+                     border_radius=10)
+
+    # Draw rounded button with hover and click effects
+    pygame.draw.rect(main_screen, current_button_color, (button_x, button_y, button_width, button_height),
+                     border_radius=10)
+
+    # Draw text
+    font = pygame.font.SysFont("Arial", 28, bold=True)
+    text = font.render("Reset", True, text_color)
     text_rect = text.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
     main_screen.blit(text, text_rect)
 
-    return button_x, button_y, button_width, button_height
+    return button_x, button_y, button_width, button_height, is_clicked
 
 
 def main():
@@ -115,7 +169,8 @@ def main():
             # Handle clicks for the reset button
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                button_x, button_y, button_width, button_height = draw_reset_button(screen, environment)
+                button_x, button_y, button_width, button_height, _ = draw_reset_button(screen, environment, mouse_x,
+                                                                                       mouse_y)
                 if (button_x <= mouse_x <= button_x + button_width) and (
                         button_y <= mouse_y <= button_y + button_height):
                     balls = create_balls()  # Recreate the balls
@@ -141,7 +196,8 @@ def main():
         draw_background(screen, environment, 30)
         for ball in balls:
             ball.draw(screen)
-        draw_reset_button(screen, environment)
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        draw_reset_button(screen, environment, mouse_x, mouse_y)
 
         # Update the screen
         pygame.display.flip()
