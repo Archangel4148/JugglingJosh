@@ -14,6 +14,7 @@ class JugglingEnvironment:
     scaling_factor: float
     left_hand_x: int | None
     right_hand_x: int | None
+    use_distance_and_max_height: bool
 
     def get_gravity_scaled(self) -> float:
         return self.gravity * self.scaling_factor
@@ -61,11 +62,17 @@ class Ball:
         pygame.draw.circle(main_screen, self.color, (int(self.x), int(self.y)),
                            self.radius * self.environment.scaling_factor)
 
-    def throw(self, velocity: float, angle: float):
+    def throw(self, velocity: float = None, angle: float = None, distance: float = None, max_height: float = None):
         if self.is_airborne:
             print("Attempted to throw a ball that is already airborne.")
-            # raise ValueError(f"Ball {self.name} is already airborne, and cannot be thrown again.")
             return
+
+        if self.environment.use_distance_and_max_height:
+            velocity, angle = compute_throw_vector(self.environment, distance, max_height)
+
+        if velocity is None or angle is None:
+            raise ValueError("Either provide velocity and angle, or distance and max_height.")
+
         # Convert velocity to pixels per second
         velocity *= self.environment.scaling_factor
 
@@ -90,3 +97,9 @@ class Ball:
         self.velocity_x = 0
         self.velocity_y = 0
         self.is_airborne = False
+
+
+def compute_throw_vector(environment: JugglingEnvironment, distance: float, max_height: float) -> tuple[float, float]:
+    angle = math.atan(4 * max_height / distance)
+    velocity = math.sqrt(environment.gravity * distance ** 2 / (2 * math.cos(angle) ** 2 * 4 * max_height))
+    return velocity, math.degrees(angle)
