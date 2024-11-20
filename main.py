@@ -10,17 +10,18 @@ from juggling_tools import Ball, JugglingEnvironment
 # Pygame settings
 SCREEN_WIDTH = 800  # in pixels
 SCREEN_HEIGHT = 600  # in pixels
-FPS = 60
+FPS = 120
 
 # Juggling settings
-USE_DISTANCE_AND_MAX_HEIGHT = True
+USE_DISTANCE_AND_MAX_HEIGHT = False
 ANGLE = 75  # Throw angle in degrees
 THROW_VELOCITY = 5  # Velocity in m/s
 HAND_DISTANCE = 0.4  # Distance between hands in meters
-MAX_HEIGHT = 0.76  # Max height of throw in meters
+MAX_HEIGHT = 2  # Max height of throw in meters
+DWELL_TIME = 0.3  # Time in seconds to wait after each throw
 
 # Ball settings
-NUMBER_OF_BALLS = 3
+NUMBER_OF_BALLS = 4
 BALL_RADIUS = 0.06  # in meters
 USE_PASTEL_COLORS = False
 
@@ -51,11 +52,21 @@ DRAW_HAND_MARKERS = True
 # ====================================================================
 
 def compute_throw_range(environment: JugglingEnvironment, velocity: float, angle: float) -> float:
-    # Compute horizontal range in meters
-    range_meters = (velocity ** 2) * math.sin(math.radians(2 * angle)) / environment.gravity
+    throw_range = velocity ** 2 * math.sin(math.radians(2 * angle)) / environment.gravity
+    return throw_range
 
-    # Convert to pixels
-    return range_meters * environment.scaling_factor
+
+def compute_throw_vector(environment: JugglingEnvironment, distance: float, max_height: float) -> tuple[float, float]:
+    angle = math.atan(4 * max_height / distance)
+    velocity = math.sqrt(environment.gravity * distance ** 2 / (2 * math.cos(angle) ** 2 * 4 * max_height))
+    return velocity, math.degrees(angle)
+
+
+def compute_throw_interval(environment: JugglingEnvironment, velocity: float, angle: float) -> float:
+    flight_time = 2 * velocity / environment.gravity
+    omega = NUMBER_OF_BALLS / 2 - DWELL_TIME
+    throw_interval = flight_time / omega
+    return throw_interval
 
 
 def draw_background(main_screen: pygame.Surface, environment: JugglingEnvironment, marker_length: int):
@@ -128,8 +139,8 @@ def main():
     environment = JugglingEnvironment(
         width_pix=screen.get_width(),
         height_pix=screen.get_height(),
-        gravity=9.8,
-        floor_y=screen.get_height() // 2,
+        gravity=9.81,
+        floor_y=screen.get_height() * 0.75,
         ceiling_y=0,
         scaling_factor=200,
         left_hand_x=None,
@@ -139,15 +150,26 @@ def main():
 
     # Calculate throw range
     if not USE_DISTANCE_AND_MAX_HEIGHT:
-        throw_range = compute_throw_range(environment, THROW_VELOCITY, ANGLE)
+        throw_range_pix = compute_throw_range(environment, THROW_VELOCITY, ANGLE) * environment.scaling_factor
     else:
-        throw_range = HAND_DISTANCE * environment.scaling_factor
-
-    print(f"Throw range: {throw_range / environment.scaling_factor:.2f} m")
+        throw_range_pix = HAND_DISTANCE * environment.scaling_factor
 
     # Find left and right hand positions to match throw range
-    environment.left_hand_x = environment.width_pix // 2 - throw_range // 2
-    environment.right_hand_x = environment.width_pix // 2 + throw_range // 2
+    environment.left_hand_x = environment.width_pix // 2 - throw_range_pix // 2
+    environment.right_hand_x = environment.width_pix // 2 + throw_range_pix // 2
+
+    # Find throw vector
+    if environment.use_distance_and_max_height:
+        velocity, angle = compute_throw_vector(environment, HAND_DISTANCE, MAX_HEIGHT)
+    else:
+        velocity, angle = THROW_VELOCITY, ANGLE
+
+    # Calculate throw interval
+    throw_interval = compute_throw_interval(environment, velocity, angle)
+
+    # Initialize timers
+    right_hand_time = 0
+    left_hand_time = throw_interval / 2
 
     def create_balls():
         """Helper function to create a new list of balls."""
@@ -159,10 +181,10 @@ def main():
             new_balls.append(Ball(environment, x, environment.floor_y, BALL_RADIUS, color, name))
         return new_balls
 
-    # Initialize balls and start the first throw
+    # Initialize balls
     balls = create_balls()
-    balls[0].throw(velocity=THROW_VELOCITY, angle=ANGLE, distance=HAND_DISTANCE, max_height=MAX_HEIGHT)
 
+    # Create pygame clock to control frame rate
     clock = pygame.time.Clock()
 
     # Main game loop
@@ -180,7 +202,6 @@ def main():
                 if (button_x <= mouse_x <= button_x + button_width) and (
                         button_y <= mouse_y <= button_y + button_height):
                     balls = create_balls()  # Recreate the balls
-                    balls[0].throw(velocity=THROW_VELOCITY, angle=ANGLE, distance=HAND_DISTANCE, max_height=MAX_HEIGHT)
 
         # Cap the frame rate
         clock.tick(FPS)
@@ -188,11 +209,23 @@ def main():
         # Calculate delta time
         dt = clock.get_time() / 1000
 
+        # Update hand timers
+        right_hand_time += dt
+        left_hand_time += dt
+
         # Check if a throw is needed
-        for i, ball in enumerate(balls):
-            if ball.detect_apex():
-                next_ball = balls[(i + 1) % len(balls)]
-                next_ball.throw(velocity=THROW_VELOCITY, angle=ANGLE, distance=HAND_DISTANCE, max_height=MAX_HEIGHT)
+        if right_hand_time >= throw_interval:
+            right_hand_time = 0
+            for ball in balls:
+                if ball.is_in_hand("right"):
+                    ball.throw(velocity=velocity, angle=angle)
+                    break
+        if left_hand_time >= throw_interval:
+            left_hand_time = 0
+            for ball in balls:
+                if ball.is_in_hand("left"):
+                    ball.throw(velocity=velocity, angle=angle)
+                    break
 
         # Update ball positions
         for ball in balls:

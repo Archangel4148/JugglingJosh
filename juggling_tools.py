@@ -62,16 +62,10 @@ class Ball:
         pygame.draw.circle(main_screen, self.color, (int(self.x), int(self.y)),
                            self.radius * self.environment.scaling_factor)
 
-    def throw(self, velocity: float = None, angle: float = None, distance: float = None, max_height: float = None):
+    def throw(self, velocity: float, angle: float):
         if self.is_airborne:
             print("Attempted to throw a ball that is already airborne.")
             return
-
-        if self.environment.use_distance_and_max_height:
-            velocity, angle = compute_throw_vector(self.environment, distance, max_height)
-
-        if velocity is None or angle is None:
-            raise ValueError("Either provide velocity and angle, or distance and max_height.")
 
         # Convert velocity to pixels per second
         velocity *= self.environment.scaling_factor
@@ -88,8 +82,16 @@ class Ball:
         self.velocity_x = velocity_x
         self.velocity_y = velocity_y
 
-    def detect_apex(self):
-        return self.previous_velocity_y < 0 <= self.velocity_y
+    def is_in_hand(self, hand: str):
+        if self.is_airborne:
+            return
+        center = self.environment.width_pix / 2
+        if hand.casefold() == "left":
+            return self.x < center
+        elif hand.casefold() == "right":
+            return self.x > center
+        else:
+            raise ValueError(f"Invalid hand: {hand}")
 
     def reset(self):
         self.x = self.initial_x
@@ -97,9 +99,3 @@ class Ball:
         self.velocity_x = 0
         self.velocity_y = 0
         self.is_airborne = False
-
-
-def compute_throw_vector(environment: JugglingEnvironment, distance: float, max_height: float) -> tuple[float, float]:
-    angle = math.atan(4 * max_height / distance)
-    velocity = math.sqrt(environment.gravity * distance ** 2 / (2 * math.cos(angle) ** 2 * 4 * max_height))
-    return velocity, math.degrees(angle)
