@@ -15,6 +15,7 @@ class JugglingEnvironment:
     left_hand_x: int | None
     right_hand_x: int | None
     use_distance_and_max_height: bool
+    number_of_balls: int
 
     def get_gravity_scaled(self) -> float:
         return self.gravity * self.scaling_factor

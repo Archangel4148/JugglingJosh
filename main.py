@@ -13,15 +13,15 @@ SCREEN_HEIGHT = 600  # in pixels
 FPS = 120
 
 # Juggling settings
-USE_DISTANCE_AND_MAX_HEIGHT = False
+USE_DISTANCE_AND_MAX_HEIGHT = True
 ANGLE = 75  # Throw angle in degrees
 THROW_VELOCITY = 5  # Velocity in m/s
 HAND_DISTANCE = 0.4  # Distance between hands in meters
 MAX_HEIGHT = 2  # Max height of throw in meters
-DWELL_TIME = 0.3  # Time in seconds to wait after each throw
+DWELL_RATIO = 0.66  # The fraction of time that a hand is occupied
 
 # Ball settings
-NUMBER_OF_BALLS = 4
+STARTING_BALL_COUNT = 5
 BALL_RADIUS = 0.06  # in meters
 USE_PASTEL_COLORS = False
 
@@ -64,9 +64,42 @@ def compute_throw_vector(environment: JugglingEnvironment, distance: float, max_
 
 def compute_throw_interval(environment: JugglingEnvironment, velocity: float, angle: float) -> float:
     flight_time = 2 * velocity / environment.gravity
-    omega = NUMBER_OF_BALLS / 2 - DWELL_TIME
+    omega = environment.number_of_balls / 2 - DWELL_RATIO
     throw_interval = flight_time / omega
     return throw_interval
+
+
+def recalculate(environment: JugglingEnvironment) -> tuple[float, float, float, float, float]:
+    # Calculate throw range
+    if USE_DISTANCE_AND_MAX_HEIGHT:
+        throw_range_pix = HAND_DISTANCE * environment.scaling_factor
+    else:
+        throw_range_pix = compute_throw_range(environment, THROW_VELOCITY, ANGLE) * environment.scaling_factor
+
+    # Find left and right hand positions to match throw range
+    environment.left_hand_x = environment.width_pix // 2 - throw_range_pix // 2
+    environment.right_hand_x = environment.width_pix // 2 + throw_range_pix // 2
+
+    # Find throw vector
+    if environment.use_distance_and_max_height:
+        velocity, angle = compute_throw_vector(environment, HAND_DISTANCE, MAX_HEIGHT)
+    else:
+        velocity, angle = THROW_VELOCITY, ANGLE
+
+    # Calculate throw interval
+    throw_interval = compute_throw_interval(environment, velocity, angle)
+
+    # Initialize timers
+    left_hand_time = throw_interval / 2
+    right_hand_time = 0
+
+    # Print report
+    print(f"====================\nThrow velocity: {velocity:.2f} m/s")
+    print(f"Throw angle: {angle:.2f} degrees")
+    print(f"Throw range: {throw_range_pix:.2f} pixels")
+    print(f"Throw interval: {throw_interval:.2f} seconds\n====================\n")
+
+    return velocity, angle, throw_interval, right_hand_time, left_hand_time
 
 
 def draw_background(main_screen: pygame.Surface, environment: JugglingEnvironment, marker_length: int):
@@ -146,40 +179,21 @@ def main():
         left_hand_x=None,
         right_hand_x=None,
         use_distance_and_max_height=USE_DISTANCE_AND_MAX_HEIGHT,
+        number_of_balls=STARTING_BALL_COUNT,
     )
-
-    # Calculate throw range
-    if not USE_DISTANCE_AND_MAX_HEIGHT:
-        throw_range_pix = compute_throw_range(environment, THROW_VELOCITY, ANGLE) * environment.scaling_factor
-    else:
-        throw_range_pix = HAND_DISTANCE * environment.scaling_factor
-
-    # Find left and right hand positions to match throw range
-    environment.left_hand_x = environment.width_pix // 2 - throw_range_pix // 2
-    environment.right_hand_x = environment.width_pix // 2 + throw_range_pix // 2
-
-    # Find throw vector
-    if environment.use_distance_and_max_height:
-        velocity, angle = compute_throw_vector(environment, HAND_DISTANCE, MAX_HEIGHT)
-    else:
-        velocity, angle = THROW_VELOCITY, ANGLE
-
-    # Calculate throw interval
-    throw_interval = compute_throw_interval(environment, velocity, angle)
-
-    # Initialize timers
-    right_hand_time = 0
-    left_hand_time = throw_interval / 2
 
     def create_balls():
         """Helper function to create a new list of balls."""
         new_balls = []
-        for j in range(NUMBER_OF_BALLS):
+        for j in range(environment.number_of_balls):
             x = environment.left_hand_x if j % 2 == 0 else environment.right_hand_x
             color = BALL_COLORS[j % len(BALL_COLORS)]
             name = chr(ord('A') + j)
             new_balls.append(Ball(environment, x, environment.floor_y, BALL_RADIUS, color, name))
         return new_balls
+
+    # Calculate throw parameters
+    velocity, angle, throw_interval, right_hand_time, left_hand_time = recalculate(environment)
 
     # Initialize balls
     balls = create_balls()
@@ -202,6 +216,17 @@ def main():
                 if (button_x <= mouse_x <= button_x + button_width) and (
                         button_y <= mouse_y <= button_y + button_height):
                     balls = create_balls()  # Recreate the balls
+            # Handle key press events to change the number of balls
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:  # Increase the number of balls
+                    environment.number_of_balls += 1
+                    velocity, angle, throw_interval, right_hand_time, left_hand_time = recalculate(environment)
+                    balls = create_balls()  # Recreate balls with the new number
+                elif event.key == pygame.K_DOWN:  # Decrease the number of balls
+                    if environment.number_of_balls > 1:  # Prevent going below 1 ball
+                        environment.number_of_balls -= 1
+                        velocity, angle, throw_interval, right_hand_time, left_hand_time = recalculate(environment)
+                        balls = create_balls()  # Recreate balls with the new number
 
         # Cap the frame rate
         clock.tick(FPS)
@@ -210,22 +235,23 @@ def main():
         dt = clock.get_time() / 1000
 
         # Update hand timers
-        right_hand_time += dt
         left_hand_time += dt
+        right_hand_time += dt
 
         # Check if a throw is needed
-        if right_hand_time >= throw_interval:
-            right_hand_time = 0
-            for ball in balls:
-                if ball.is_in_hand("right"):
-                    ball.throw(velocity=velocity, angle=angle)
-                    break
         if left_hand_time >= throw_interval:
             left_hand_time = 0
             for ball in balls:
                 if ball.is_in_hand("left"):
                     ball.throw(velocity=velocity, angle=angle)
                     break
+        if right_hand_time >= throw_interval:
+            right_hand_time = 0
+            for ball in balls:
+                if ball.is_in_hand("right"):
+                    ball.throw(velocity=velocity, angle=angle)
+                    break
+
 
         # Update ball positions
         for ball in balls:
